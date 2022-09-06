@@ -1,62 +1,119 @@
 import './css/styles.css';
 import debounce from 'lodash.debounce';
 import Notiflix from 'notiflix';
-import { fetchCountries } from './fetchCountries.js';
+import axios from 'axios'
+
+const BASE_URL = 'https://pixabay.com/api/';
+const PER_PAGES = 40;
+const API_KEY = '29713049-07e20095513e7d10800a19bda';
 
 
-const input = document.querySelector("#search-box");
-const countryList = document.querySelector(".country-list");
-const countryCard = document.querySelector(".country-info");
+const refs = {
+    form: document.querySelector(`.search-form`),
+    input: document.querySelector(`input`),
+    button: document.querySelector(`button`),
+    gallery: document.querySelector(`.gallery`),
+    loadMore: document.querySelector(`.load-more`)
+};
 
-const DEBOUNCE_DELAY = 300;
 
-function renderCountry(countries) {
-  return countries.map(({ name, capital, population, flags, languages }) =>
-`
-  <ul>
-  <img src="${flags.svg}" alt="flag of ${name.official}" width = 100px; height = 50px;>
-  <span class="countryName"><b>${name.official}</b></span>
-  <li><span><b>Capital:</b></span> <span>${capital}</span></li>
-  <li><span><b>Population:</b></span> <span>${population}</span></li>
-  <li><span><b>Languages:</b></span><span>${Object.values(languages)}</span></li></ul>
-  `
-  ).join('');
+const fetchPictures = async (searchQuery, page) => {
+  const response = await axios.get(`${BASE_URL}?key=${API_KEY}&q=${searchQuery}&image_type=photo&orientation=horizontal&safesearch=true&per_page=${PER_PAGES}&page=${page}`);
+  return response.data;
+};
+
+
+refs.form.addEventListener('submit', onFormSubmit);
+refs.loadMore.addEventListener('click', onLoadMoreBtn);
+
+
+let currentPage = 1;
+refs.loadMore.classList.add('ishidden');
+
+
+function onFormSubmit(e) {    
+  e.preventDefault();
+const searchName = e.currentTarget.elements.searchQuery.value.trim();
+if (searchName === "" ) {
+  return;
+} else {
+clearGalleryList();
+currentPage = 1;
+fetchRequest (searchName, currentPage); 
+  };
+e.currentTarget.elements.searchQuery.value = ""
+};
+
+
+function onLoadMoreBtn() {
+  currentPage += 1;
+  const searchName = refs.input.value.trim();
+  fetchRequest(searchName, currentPage); 
 }
 
+async function fetchRequest (searchQuery, currentPage) {
+  try {
+    const fetchResult = await fetchPictures(searchQuery, currentPage);  
+    if (fetchResult.totalHits > 1 && currentPage === 1) {
+      Notiflix.Notify.info(`Hooray! We found ${fetchResult.totalHits} images.`);
+      refs.loadMore.classList.add('ishidden');
+    };
+    filterFetchResult(fetchResult);
+  } catch (error) {
+    console.log(error)
+  };
+};
 
-function onCountry(event) {
-    const name = event.target.value.trim();
-    
-    if (!name) {
-        countryCard.innerHTML = '';
-        countryList.innerHTML = "";
-    }
+function filterFetchResult(fetchResult) {
+  if (currentPage === Math.ceil(fetchResult.totalHits / 40)) {
+      insertMarkup(fetchResult.hits);  
+    Notiflix.Notify.info("We're sorry, but you've reached the end of search results.");
+    refs.loadMore.classList.add('ishidden');
+      return;
+  } else if (fetchResult.total === 0) {
+    Notiflix.Notify.failure("Sorry, there are no images matching your search query. Please try again.");
+    refs.loadMore.classList.add('ishidden');
+      return;
+  } else { 
+      insertMarkup(fetchResult.hits);  
+      refs.loadMore.classList.remove('ishidden');
+      return;
+  };
+};
 
-    fetchCountries(name).then(countries => {
-        if (countries.length === 1) {
-            countryList.innerHTML = "";
-            countryCard.innerHTML = renderCountry(countries);
-            
-        }
-        else if (countries.length >= 2 && countries.length <= 10) {
-            countryCard.innerHTML = '';
-            countryList.innerHTML =  renderList(countries);
-        }
-        else {
-            Notiflix.Notify.info('Too many matches found. Please enter a more specific name.');
-        }
-    })
-    .catch (() => Notiflix.Notify.failure('Oops, there is no country with that name'))   
-}
-    
-function renderList(countries) {
-    return countries.map(({ flags, name }) =>
-    `<li>
-      <img src="${flags.svg}" alt="flag of ${name.official}" width = 50px; height = 30px;>
-        <span><b>${name.official}</b></span>
-    </li>`)
-    .join('');
-}
-  
+function insertMarkup(arrayImages) {
+  const result = createList(arrayImages);
+ 
+  refs.gallery.insertAdjacentHTML('beforeend', result);
 
-input.addEventListener('input', debounce(onCountry, DEBOUNCE_DELAY));
+};
+
+function createList (arrayImages) {
+  return arrayImages.reduce((acc, item) => acc + createMarkup(item), "");
+};
+
+function  createMarkup (img) {
+  return `
+        <div class="photo-card">
+            <img src="${img.webformatURL}" alt="${img.tags}" loading="lazy" width="220px" height="150px"/>
+             <div class="info">
+                 <p class="info-item">
+                 <b>Likes:</b> <br>${img.likes}
+                 </p>
+                 <p class="info-item">
+                 <b>Views:</b> <br>${img.views}
+                 </p>
+                 <p class="info-item">
+                 <b>Comments:</b> <br>${img.comments}
+                 </p>
+                 <p class="info-item">
+                 <b>Downloads:</b> <br>${img.downloads}
+                 </p>
+             </div>
+         </div>
+`};
+
+
+  function clearGalleryList () {
+    refs.gallery.innerHTML = "";
+};
